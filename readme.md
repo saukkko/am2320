@@ -1,25 +1,27 @@
-# What?
+## What?
 
 This repository contains somewhat random implementations for reading AM2320 temperature & humidity sensor data with Raspberry Pi Zero W by using i2c bus.
 
-# Installation
+## Installation
 
 Not yet implemented
 
-# Usage
+## Usage
 
 Not yet implemented
 
-# Contributing
+## Contributing
 
 While this is a personal project repo, you can still contribute if you wish. Please follow these guidelines if you do.
 
-## Python
+- EOL character should be LF (Not CRLF)
 
-Use `mypy` for linting
-Use `autopep8` for code formatting
-Use **4** spaces for indentation
+### Python
 
-## C
+- Use `mypy` for linting
+- Use `autopep8` for code formatting
+- Use **4** spaces for indentation
+
+### C
 
 Nothing yet, but keep it clean
