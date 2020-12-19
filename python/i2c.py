@@ -3,12 +3,13 @@ import logging
 import json
 import os
 from time import sleep
+# this stops windows interpreter from complaining
+if os.name == "posix":
+    from fcntl import ioctl
 
 # TODO
 # - implement external config file from json or cmdline params
-# - replace smbus2 with direct reads from /dev/i2c by os module (https://docs.python.org/3/library/os.html#module-os)
 # - document all functions
-# - call the functions and return the data back
 
 logging.basicConfig(format="%(message)s")
 log = logging.getLogger(__name__)
@@ -32,45 +33,38 @@ test_data = [
 
 
 class I2C(object):
-    """
-    docstring
-    """
-
     def __init__(self, bus: int):
-        dev = f"/dev/i2c-{bus}"
+        self.dev = f"/dev/i2c-{bus}"
+        self.fd = os.open(self.dev, os.O_RDWR)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self):
+        if self.fd:
+            os.close(self.fd)
+
+    def close(self):
+        os.close(self.fd)
+
+    def getData(self, addr: int = sensor_addr):
+        if not self.fd:
+            raise IOError(f"{self.dev} is not open")
+        ioctl(self.fd, 0x0703, addr)
 
         try:
-            if os.name != "posix":
-                raise Exception(
-                    "Sorry, only posix (unix-like) file descriptors are supported")
-            if not os.path.exists(dev):
-                raise Exception("dev does not exist")
-        except Exception as err:
-            log.error(f"Error opening device: {err}")
-        else:
-            fd = os.open(dev, os.O_RDWR)
-        return None
+            os.write(self.fd, bytes(0x00))
+        except Exception:
+            pass
+        sleep(0.0010)
 
-    def write(self):
-        pass
+        os.write(self.fd, bytes([0x03, 0x00, 0x04]))
+        sleep(0.0017)
 
+        data = os.read(self.fd, 8)
+        self.close()
 
-def readSensor(addr=sensor_addr, start=reg_start, op=func_code, reg=reg_len):
-    """
-    Document this!
-    """
-    bus.write_byte(addr, 0, True)
-    # bus.close() might be needed after every operation.
-    sleep(0.00085)  # AM2320 needs 800-3000 µs of sleep after wake up
-
-    bus.write_i2c_block_data(addr, start, [op, reg])
-    # AM2320 needs to sleep at least 1.5 ms before reading the registers
-    sleep(0.00170)
-
-    data = bus.read_i2c_block_data(addr, start, reg)
-    bus.close()
-
-    return data
+        return list(data)
 
 
 def validate(data: list):
@@ -107,19 +101,19 @@ def merge(a: int, b: int, numbits: int = 8):
     return (a << numbits) | b
 
 
-# open i2c
-bus = I2C(i2c_bus)
-
 # return the data.
 try:
-    data = validate(test_data)
+    i2c = I2C(i2c_bus)
+    data = i2c.getData()
+    validate(data)
     humi = merge(data[2], data[3])
     temp = merge(data[4], data[5])
     if (temp & 0x8000):
         temp = -(temp & 0x7fff)
+
 except Exception as err:
-    log.error(err)
+    log.error(f"Error: {err}")
+
 else:
-    pass
-finally:
-    print(f"humi: {humi/10}\ntemp: {temp/10}")
+    print(
+        f"humi: {humi/10}\ntemp: {temp/10}\nCRC: {hex(merge(data[7], data[6]))}")
