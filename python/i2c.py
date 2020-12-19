@@ -1,8 +1,8 @@
 #!/usr/bin/env python3.8
 import logging
 import json
+import os
 from time import sleep
-
 
 # TODO
 # - implement external config file from json or cmdline params
@@ -26,19 +26,33 @@ reg_start = 0x00    # start reading from zero by default
 test_data = [
     0x03, 0x04,     # func + number of registers
     0x02, 0x14,     # 532 = 53.2 RH %
-    0x81, 0x05,     # 261 = 26.1 °C
+    0x01, 0x05,     # 261 = 26.1 °C
     0x71, 0xC7      # checksum
 ]
 
 
-try:
-    # this module does not work with windows so this is a dirty fix for development
-    from smbus2 import SMBus
+class I2C(object):
+    """
+    docstring
+    """
 
-    # could try `with SMBus(1) as bus:`, not sure how it works though
-    bus = SMBus(i2c_bus)
-except Exception as err:
-    log.error(f"Error opening i2c: {err}")
+    def __init__(self, bus: int):
+        dev = f"/dev/i2c-{bus}"
+
+        try:
+            if os.name != "posix":
+                raise Exception(
+                    "Sorry, only posix (unix-like) file descriptors are supported")
+            if not os.path.exists(dev):
+                raise Exception("dev does not exist")
+        except Exception as err:
+            log.error(f"Error opening device: {err}")
+        else:
+            fd = os.open(dev, os.O_RDWR)
+        return None
+
+    def write(self):
+        pass
 
 
 def readSensor(addr=sensor_addr, start=reg_start, op=func_code, reg=reg_len):
@@ -92,6 +106,9 @@ def crc16(data: list):
 def merge(a: int, b: int, numbits: int = 8):
     return (a << numbits) | b
 
+
+# open i2c
+bus = I2C(i2c_bus)
 
 # return the data.
 try:
