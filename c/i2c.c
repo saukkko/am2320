@@ -105,26 +105,15 @@ int main()
         int i, temp;
         unsigned short humi, checksum, crc;
 
-        humi = buf[2] << 8;
-        humi = humi + buf[3];
-
-        temp = buf[4] << 8;
-        temp = temp + buf[5];
-
-        // uncomment to test negative temperature value.
-        /*
-        temp = temp + 0x8000;
-        printf("%04x\n\n", temp);
-        */
+        humi = (buf[2] << 8) | buf[3];
+        temp = (buf[4] << 8) | buf[5];
+        crc = (buf[7] << 8) | buf[6]; // am2320 sends crc "backwards"
 
         // negative temp is determined if bit 15 is 1
         if (temp & 0x8000)
         {
             temp = -(temp & 0x7fff);
         }
-
-        crc = buf[7] << 8;
-        crc = crc + buf[6];
 
         checksum = crc16(buf, 6);
 
@@ -135,22 +124,22 @@ int main()
 
             strftime(t_buffer, 20, "%Y-%m-%d %H:%M:%S", tm_info);
 
-            printf("RH: %i.2\nTemp: %i.2\nCRC: %02x\n", humi / 10, temp / 10, crc);
+            printf("RH: %.1f\nTemp: %.1f\nCRC: %02x\n", (float)humi / 10.0f, (float)temp / 10.0f, crc);
             printf("Timestamp: %s\n\n", t_buffer);
 
-            fprintf(file, "\"%i.2\",\"%i.2\",\"%s\"", humi / 10, temp / 10, t_buffer);
+            fprintf(file, "\"%.1f\",\"%.1f\",\"%s\"", (float)humi / 10.0f, temp / 10.0f, t_buffer);
 
             /*
             for (i = 0; i < len; i++)
             {
                 printf("%02x ", buf[i]);
             }
-*/
+            */
             printf("\n");
         }
         else
         {
-            printf("Checksum error.\nsensor: %04x\ncrc 16: %04x\n\ndata: ", crc, checksum);
+            printf("Checksum error.\nsensor: %04x\ncalculated: %04x\n\ndata: ", crc, checksum);
 
             for (i = 0; i < len; i++)
             {
