@@ -1,6 +1,4 @@
 #!/usr/bin/env python3.8
-import logging
-import json
 import os
 from time import sleep
 # this stops windows interpreter from complaining
@@ -11,8 +9,6 @@ if os.name == "posix":
 # - implement external config file from json or cmdline params
 # - document all functions
 
-logging.basicConfig(format="%(message)s")
-log = logging.getLogger(__name__)
 
 # Configure static parameters here for now.
 
@@ -23,19 +19,11 @@ reg_len = 0x04      # AM2320 has total 4 registers for humi and temp data.
 reg_start = 0x00    # start reading from zero by default
 
 
-# test data
-test_data = [
-    0x03, 0x04,     # func + number of registers
-    0x02, 0x14,     # 532 = 53.2 RH %
-    0x01, 0x05,     # 261 = 26.1 °C
-    0x71, 0xC7      # checksum
-]
-
-
 class I2C(object):
-    def __init__(self, bus: int):
+    def __init__(self, bus: int = i2c_bus):
         self.dev = f"/dev/i2c-{bus}"
         self.fd = os.open(self.dev, os.O_RDWR)
+        self.write_cmd = bytes([func_code, reg_start, reg_len])
 
     def __enter__(self):
         return self
@@ -58,62 +46,51 @@ class I2C(object):
             pass
         sleep(0.0010)
 
-        os.write(self.fd, bytes([0x03, 0x00, 0x04]))
+        os.write(self.fd, self.write_cmd)
         sleep(0.0017)
 
         data = os.read(self.fd, 8)
         self.close()
 
-        return list(data)
+        valid_data = self.__validate(data)
 
+        humi = self.__merge(valid_data[2], valid_data[3])
+        temp = self.__merge(valid_data[4], valid_data[5])
 
-def validate(data: list):
-    """
-    Document this!
-    """
-    try:
-        # actually data[1] should be number of registers read, so its not always 0x04
-        if data[0] != 0x03 and data[1] != 0x04:
+        if (temp & 0x8000):
+            temp = -(temp & 0x7fff)
+
+        return dict({
+            f"humidity": humi/10,
+            f"temperature": temp/10
+        })
+
+    def __validate(self, data: bytes):
+        """
+        Document this!
+        """
+
+        if data[0] != self.write_cmd[0] and data[1] != self.write_cmd[2]:
             raise Exception("ACK mismatch")
-        crc = merge(data[7], data[6])
-        if crc16(data[0:6]) != crc:
+        crc = self.__merge(data[7], data[6])
+        if self.__crc16(data[0:6]) != crc:
             raise Exception("CRC mismatch")
-    except Exception as err:
-        log.warning(f"Warning: {err}")
-    return data
+        return data
 
+    @staticmethod
+    def __crc16(data: bytes):
+        crc = 0xFFFF
 
-def crc16(data: list):
-    crc = 0xFFFF
+        for i in data:
+            crc = crc ^ i
+            for bit in range(8):
+                if (crc & 0x0001):
+                    crc >>= 1
+                    crc ^= 0xA001
+                else:
+                    crc >>= 1
+        return crc
 
-    for i in data:
-        crc = crc ^ i
-        for bit in range(8):
-            if (crc & 0x0001):
-                crc >>= 1
-                crc ^= 0xA001
-            else:
-                crc >>= 1
-    return crc
-
-
-def merge(a: int, b: int, numbits: int = 8):
-    return (a << numbits) | b
-
-
-# return the data.
-try:
-    i2c = I2C(i2c_bus)
-    data = i2c.getData()
-    validate(data)
-    humi = merge(data[2], data[3])
-    temp = merge(data[4], data[5])
-    if (temp & 0x8000):
-        temp = -(temp & 0x7fff)
-
-except Exception as err:
-    log.error(f"Error: {err}")
-
-else:
-    print(
-        f"humi: {humi/10}\ntemp: {temp/10}\nCRC: {hex(merge(data[7], data[6]))}")
+    @staticmethod
+    def __merge(a: int, b: int, numbits: int = 8):
+        return (a << numbits) | b
